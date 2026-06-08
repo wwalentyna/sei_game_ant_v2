@@ -394,7 +394,7 @@ function strategyExplanation(entry: StrategyEntry): string[] {
 }
 
 function finalOutcomeExplanation(indicators: Indicators): string {
-  if (indicators.trust < 20 || indicators.food < 20 || indicators.rain < 20) {
+  if (indicators.trust < 20 || indicators.food < 20 || indicators.rain < 20 || indicators.ice < 20) {
     return 'The end state is a governance failure: at least one human/regional indicator fell into the crisis zone. This shows the central message of the game: global cooling alone is not enough if rainfall, food security or public legitimacy collapses.';
   }
   if (indicators.temperature > 2.3) {
@@ -407,6 +407,32 @@ function finalOutcomeExplanation(indicators: Indicators): string {
     return 'The end state is relatively stable: temperature was controlled while knowledge, trust and regional indicators remained above the danger zone. This is the best type of result, but it still depends on sustained governance and monitoring.';
   }
   return 'The end state is mixed: temperature may look acceptable, but at least one regional or governance indicator remains weak. This reflects the trade-off problem described in the SAI literature.';
+}
+
+
+function collapseReason(indicators: Indicators): string | null {
+  const failed: string[] = [];
+  if (indicators.trust <= 0) failed.push('public trust reached 0%: the council lost legitimacy and the intervention became politically bankrupt');
+  if (indicators.food <= 0) failed.push('food security reached 0%: the intervention triggered an agricultural collapse');
+  if (indicators.rain <= 0) failed.push('rainfall stability reached 0%: the regional water cycle collapsed');
+  if (indicators.ice <= 0) failed.push('Arctic ice reached 0%: the cryosphere indicator collapsed');
+  if (failed.length === 0) return null;
+  return `System collapse: ${failed.join('; ')}.`;
+}
+
+function criticalWarning(indicators: Indicators): string | null {
+  const low: string[] = [];
+  if (indicators.trust > 0 && indicators.trust <= 10) low.push('public trust');
+  if (indicators.food > 0 && indicators.food <= 10) low.push('food security');
+  if (indicators.rain > 0 && indicators.rain <= 10) low.push('rainfall stability');
+  if (indicators.ice > 0 && indicators.ice <= 10) low.push('Arctic ice');
+  if (low.length === 0) return null;
+  return `Critical warning: ${low.join(', ')} is at or below 10%. If one of these indicators reaches 0%, the game ends immediately.`;
+}
+
+function collapseSummary(reason: string | null): string {
+  if (!reason) return '';
+  return `${reason} The council cannot continue the SAI programme under this condition.`;
 }
 
 function InfoCard({ children }: { children: React.ReactNode }) {
@@ -451,7 +477,7 @@ function IntroScreen({ onStart }: { onStart: () => void }) {
           <InfoCard>
             <h2 className="mb-3 flex items-center gap-2 text-2xl font-black text-white"><Scale className="text-amber-400" /> Goal of the game</h2>
             <p className="text-slate-300 leading-relaxed">
-              Survive ten decades until 2130 without triggering collapse. A good result keeps temperature controlled, Arctic ice above danger level, food security stable, rainfall stable, public trust alive, and scientific knowledge high enough to justify decisions.
+              Survive ten decades until 2130 without triggering collapse. A good result keeps temperature controlled, Arctic ice above danger level, food security stable, rainfall stable, public trust alive, and scientific knowledge high enough to justify decisions. If public trust, food security, rainfall stability or Arctic ice reaches 0%, the simulation ends immediately.
             </p>
             <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 text-sm text-amber-100">
               The hardest part: you get only {POINTS_PER_DECADE} Governance Points each decade. You cannot choose every good option at the same time. Level 4 adds the research gap: the particle material itself becomes a decision.
@@ -604,7 +630,7 @@ function EarthVisual({ indicators }: { indicators: Indicators }) {
         </div>
         <div className="rounded-2xl border border-slate-700 bg-slate-950/40 p-4 text-sm text-slate-300">
           <div className="font-bold text-white">System warning threshold</div>
-          <div className="mt-1">Food, rain or trust below 20% can lead to crisis behaviour.</div>
+          <div className="mt-1">Trust, food, rain or Arctic ice at 10% triggers a critical warning. If any of them reaches 0%, the simulation ends immediately.</div>
         </div>
       </div>
     </div>
@@ -628,6 +654,7 @@ function App() {
   const [report, setReport] = useState<Report | null>(null);
   const [gameOver, setGameOver] = useState(false);
   const [terminationShock, setTerminationShock] = useState(false);
+  const [collapse, setCollapse] = useState<string | null>(null);
   const [pointPenalty, setPointPenalty] = useState(0);
 
   const availablePoints = Math.max(3, POINTS_PER_DECADE - pointPenalty);
@@ -815,6 +842,19 @@ function App() {
     }
 
     const rounded = roundIndicators(next);
+    const collapseMessage = collapseReason(rounded);
+    const warningMessage = criticalWarning(rounded);
+
+    if (collapseMessage) {
+      setCollapse(collapseMessage);
+      reportTitle = 'System collapse';
+      event = collapseMessage;
+      setPointPenalty(0);
+    } else if (warningMessage) {
+      reportTitle = reportTitle === 'Decade completed' ? 'Critical warning' : reportTitle;
+      event = event ? `${event} ${warningMessage}` : warningMessage;
+    }
+
     const entry: StrategyEntry = {
       year,
       particle,
@@ -836,7 +876,7 @@ function App() {
 
   const closeReport = () => {
     setReport(null);
-    if (year >= END_YEAR) setGameOver(true);
+    if (collapse || year >= END_YEAR) setGameOver(true);
   };
 
   const resetGame = () => {
@@ -854,6 +894,7 @@ function App() {
     setReport(null);
     setGameOver(false);
     setTerminationShock(false);
+    setCollapse(null);
     setPointPenalty(0);
   };
 
@@ -885,8 +926,8 @@ function App() {
       <div className="min-h-screen bg-slate-950 p-4 md:p-8 text-slate-200 font-sans">
         <div className="mx-auto max-w-6xl space-y-6">
           <div className="rounded-3xl border border-slate-800 bg-slate-900 p-8 text-center shadow-2xl">
-            <h1 className="text-4xl font-black text-white">Final Evaluation: 2130</h1>
-            <p className="mt-2 text-slate-400">The century-long climate intervention simulation is complete.</p>
+            <h1 className="text-4xl font-black text-white">Final Evaluation: {year}</h1>
+            <p className="mt-2 text-slate-400">{collapse ? 'The simulation ended early because a critical indicator collapsed.' : 'The century-long climate intervention simulation is complete.'}</p>
           </div>
           <EarthVisual indicators={indicators} />
           <div className="grid grid-cols-2 gap-4 md:grid-cols-6">
@@ -897,6 +938,13 @@ function App() {
             <MetricCard icon={<Scale size={22} />} title="Trust" value={`${indicators.trust}%`} tone={indicators.trust < 40 ? 'text-red-400' : 'text-emerald-400'} />
             <MetricCard icon={<Beaker size={22} />} title="Knowledge" value={`${indicators.knowledge}%`} tone={indicators.knowledge < 50 ? 'text-amber-400' : 'text-purple-400'} />
           </div>
+
+          {collapse && (
+            <div className="rounded-2xl border border-red-700 bg-red-950/40 p-5 text-red-100">
+              <h2 className="mb-2 flex items-center gap-2 text-2xl font-black text-white"><AlertOctagon className="text-red-400" /> Collapse condition reached</h2>
+              <p className="leading-relaxed">{collapseSummary(collapse)}</p>
+            </div>
+          )}
 
           <InfoCard>
             <h2 className="mb-3 text-2xl font-black text-white">Scientific interpretation</h2>
